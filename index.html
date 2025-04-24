@@ -157,7 +157,7 @@
             document.getElementById('equipamento').textContent = 'Equipamento: Carregando...';
 
             // Buscar a linha onde o número aparece na coluna A
-            const range = `${searchColumn}1:${searchColumn}100000`; // Aumentado para 10000 linhas
+            const range = `${searchColumn}1:${searchColumn}19000`; // Aumentado para 10000 linhas
             try {
                 const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?sheet=${encodeURIComponent(sheetName)}&range=${range}`;
                 const response = await fetch(url);
