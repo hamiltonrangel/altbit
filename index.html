@@ -1,0 +1,211 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pesquisa de Equipamentos</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        h1 {
+            font-size: 24px;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        input[type="number"] {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 200px;
+            margin-bottom: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #D4F4DD;
+            border: none;
+            border-radius: 4px;
+            color: #333;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #A8C7B0;
+        }
+        .result {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #333;
+        }
+        .result span {
+            display: block;
+            margin: 10px 0;
+        }
+        .loading::after {
+            content: '...';
+            display: inline-block;
+            width: 20px;
+            text-align: left;
+            animation: dots 1.5s infinite;
+        }
+        @keyframes dots {
+            0% { content: '...'; }
+            33% { content: '..'; }
+            66% { content: '.'; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Pesquisa de Equipamentos</h1>
+        <input type="number" id="searchInput" placeholder="Digite o número" required>
+        <br>
+        <button onclick="search()">Pesquisar</button>
+        <div class="result">
+            <span id="codigo">Código: --</span>
+            <span id="patrimonio">Patrimônio: --</span>
+            <span id="equipamento">Equipamento: --</span>
+        </div>
+    </div>
+
+    <script>
+        async function fetchCell(sheetId, sheetName, cell, elementId) {
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?sheet=${encodeURIComponent(sheetName)}&range=${cell}`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Erro na requisição');
+                const text = await response.text();
+                const json = JSON.parse(text.substr(47).slice(0, -2));
+                return json.table.rows[0]?.c[0]?.v || '--';
+            } catch (error) {
+                console.error(`Erro ao buscar ${cell} para ${elementId}:`, error);
+                document.getElementById(elementId).classList.add('loading');
+                return ''; // Retorna vazio para animação de pontinhos
+            }
+        }
+
+        async function search() {
+            const searchValue = document.getElementById('searchInput').value.trim();
+            if (!searchValue) {
+                alert('Por favor, insira um número.');
+                return;
+            }
+
+            // Configurações da planilha
+            const spreadsheetId = '1eLij-mTK4T6yoeHA2Jxqh8U4UpIuYjBkjr39K7JVhu0';
+            const sheetName = 'Página1';
+            const searchColumn = 'A'; // Coluna onde o número é buscado
+            const resultColumns = ['A', 'B', 'C']; // Código, Patrimônio, Equipamento
+
+            // Exibir "Carregando..."
+            document.getElementById('codigo').textContent = 'Código: Carregando...';
+            document.getElementById('patrimonio').textContent = 'Patrimônio: Carregando...';
+            document.getElementById('equipamento').textContent = 'Equipamento: Carregando...';
+
+            // Buscar a linha onde o número aparece na coluna A
+            const range = `${searchColumn}1:${searchColumn}100000`; // Aumentado para 10000 linhas
+            try {
+                const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?sheet=${encodeURIComponent(sheetName)}&range=${range}`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Erro na requisição');
+                const text = await response.text();
+                const json = JSON.parse(text.substr(47).slice(0, -2));
+                const rows = json.table.rows;
+                console.log(`Total de linhas carregadas: ${rows.length}`);
+                console.log(`Procurando valor: ${searchValue}`);
+
+                let rowIndex = -1;
+                for (let i = 0; i < rows.length; i++) {
+                    const cellValue = rows[i].c[0]?.v;
+                    if (cellValue != null && cellValue.toString() === searchValue.toString()) {
+                        rowIndex = i + 1; // Índice da linha (base 1)
+                        console.log(`Encontrado na linha ${rowIndex}, valor: ${cellValue}`);
+                        break;
+                    }
+                }
+
+                if (rowIndex === -1) {
+                    console.log('Número não encontrado na coluna A');
+                    document.getElementById('codigo').textContent = 'Código: Não encontrado';
+                    document.getElementById('patrimonio').textContent = 'Patrimônio: Não encontrado';
+                    document.getElementById('equipamento').textContent = 'Equipamento: Não encontrado';
+                    return;
+                }
+
+                // Buscar valores das colunas A, B, C na linha encontrada
+                const [codigo, patrimonio, equipamento] = await Promise.all([
+                    fetchCell(spreadsheetId, sheetName, `${resultColumns[0]}${rowIndex}`, 'codigo'),
+                    fetchCell(spreadsheetId, sheetName, `${resultColumns[1]}${rowIndex}`, 'patrimonio'),
+                    fetchCell(spreadsheetId, sheetName, `${resultColumns[2]}${rowIndex}`, 'equipamento')
+                ]);
+
+                document.getElementById('codigo').textContent = `Código: ${codigo || '...'}`;
+                document.getElementById('patrimonio').textContent = `Patrimônio: ${patrimonio || '...'}`;
+                document.getElementById('equipamento').textContent = `Equipamento: ${equipamento || '...'}`;
+            } catch (error) {
+                console.error('Erro na busca:', error);
+                document.getElementById('codigo').classList.add('loading');
+                document.getElementById('patrimonio').classList.add('loading');
+                document.getElementById('equipamento').classList.add('loading');
+                document.getElementById('codigo').textContent = 'Código: ';
+                document.getElementById('patrimonio').textContent = 'Patrimônio: ';
+                document.getElementById('equipamento').textContent = 'Equipamento: ';
+            }
+        }
+    </script>
+</body>
+</html>
